@@ -1,7 +1,9 @@
 mod copilot;
 mod gh;
+mod headers;
 mod prompts;
 mod utils;
+mod urls;
 
 use rustyline::DefaultEditor;
 
@@ -23,6 +25,6 @@ async fn main() {
             break;
         }
 
-        copilot_m.ask(&input).await;
+        copilot_m.ask(&input, true).await;
     }
 }

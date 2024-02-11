@@ -1,137 +1,14 @@
 #![allow(dead_code)]
 
-use lazy_static::lazy_static;
-use reqwest::{self, header::HeaderMap};
+use reqwest::{self};
 use serde::{Deserialize, Serialize};
 use serde_json;
 
-use crate::utils;
-
-struct DefaultLoginHeaders {
-    accept: &'static str,
-    user_agent: &'static str,
-    editor_version: &'static str,
-    editor_plugin_version: &'static str,
-    user_agent_version: &'static str,
-}
-
-impl DefaultLoginHeaders {
-    pub fn to_headers(&self) -> HeaderMap {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            "Accept",
-            reqwest::header::HeaderValue::from_static(self.accept),
-        );
-        headers.insert(
-            "User-Agent",
-            reqwest::header::HeaderValue::from_static(self.user_agent),
-        );
-        headers.insert(
-            "X-Editor-Version",
-            reqwest::header::HeaderValue::from_static(self.editor_version),
-        );
-        headers.insert(
-            "X-Editor-Plugin-Version",
-            reqwest::header::HeaderValue::from_static(self.editor_plugin_version),
-        );
-        headers.insert(
-            "X-User-Agent-Version",
-            reqwest::header::HeaderValue::from_static(self.user_agent_version),
-        );
-        headers
-    }
-}
-
-struct DefaultGithubUserHeaders {
-    authorization: String,
-    user_agent: &'static str,
-    accept: &'static str,
-}
-
-impl DefaultGithubUserHeaders {
-    pub fn to_headers(&self) -> HeaderMap {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            "Authorization",
-            reqwest::header::HeaderValue::from_str(&self.authorization).unwrap(),
-        );
-        headers.insert(
-            "User-Agent",
-            reqwest::header::HeaderValue::from_static(self.user_agent),
-        );
-        headers.insert(
-            "Accept",
-            reqwest::header::HeaderValue::from_static(self.accept),
-        );
-        headers
-    }
-}
-
-fn get_default_user_headers(token_type: &String, token: &String) -> DefaultGithubUserHeaders {
-    DefaultGithubUserHeaders {
-        authorization: format!("{} {}", token_type, token),
-        user_agent: "GithubCopilot/1.133.0",
-        accept: "application/json",
-    }
-}
-
-struct DefaultGithubInternalHeaders {
-    authorization: String,
-    user_agent: &'static str,
-    editor_version: &'static str,
-    editor_plugin_version: &'static str,
-}
-
-impl DefaultGithubInternalHeaders {
-    pub fn to_headers(&self) -> HeaderMap {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            "Authorization",
-            reqwest::header::HeaderValue::from_str(&self.authorization).unwrap(),
-        );
-        headers.insert(
-            "user-agent",
-            reqwest::header::HeaderValue::from_static(self.user_agent),
-        );
-        headers.insert(
-            "editor-version",
-            reqwest::header::HeaderValue::from_static(self.editor_version),
-        );
-        headers.insert(
-            "editor-plugin-version",
-            reqwest::header::HeaderValue::from_static(self.editor_plugin_version),
-        );
-        headers
-    }
-}
-
-fn get_default_internal_headers(
-    _token_type: &String,
-    token: &String,
-) -> DefaultGithubInternalHeaders {
-    DefaultGithubInternalHeaders {
-        authorization: format!("token {}", token),
-        editor_version: "vscode/1.85.1",
-        editor_plugin_version: "copilot-chat/0.12.2023120701",
-        user_agent: "GitHubCopilotChat/0.12.2023120701",
-    }
-}
-
-lazy_static! {
-    static ref DEFAULT_LOGIN_HEADERS: DefaultLoginHeaders = DefaultLoginHeaders {
-        accept: "application/json",
-        user_agent: "GithubCopilot/1.133.0",
-        editor_version: "Neovim/0.9.2",
-        editor_plugin_version: "copilot.lua/1.11.4",
-        user_agent_version: "GithubCopilot/1.133.0",
-    };
-    static ref DEVICE_CODE_LOGIN_URL: &'static str = "https://github.com/login/device/code";
-    static ref DEVICE_CODE_TOKEN_CHECK_URL: &'static str =
-        "https://github.com/login/oauth/access_token";
-    static ref GH_AUTH_TOKEN_URL: &'static str = "https://api.github.com/user";
-    static ref GH_COPILOT_INTERNAL_AUTH_URL: &'static str =
-        "https://api.github.com/copilot_internal/v2/token";
-}
+use crate::{
+    headers::{self, Headers},
+    utils,
+    urls
+};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GitHubDeviceLoginResponse {
@@ -152,61 +29,61 @@ pub struct GitHubDeviceTokenResponse {
 #[derive(Debug, Serialize, Deserialize)]
 #[allow(dead_code)]
 pub struct GithubUserData {
-    login: String,
-    id: u64,
-    node_id: String,
-    avatar_url: String,
-    gravatar_id: String,
-    url: String,
-    html_url: String,
-    followers_url: String,
-    following_url: String,
-    gists_url: String,
-    starred_url: String,
-    subscriptions_url: String,
-    organizations_url: String,
-    repos_url: String,
-    events_url: String,
-    received_events_url: String,
+    pub login: String,
+    pub id: u64,
+    pub node_id: String,
+    pub avatar_url: String,
+    pub gravatar_id: String,
+    pub url: String,
+    pub html_url: String,
+    pub followers_url: String,
+    pub following_url: String,
+    pub gists_url: String,
+    pub starred_url: String,
+    pub subscriptions_url: String,
+    pub organizations_url: String,
+    pub repos_url: String,
+    pub events_url: String,
+    pub received_events_url: String,
     #[serde(rename = "type")]
-    type_: String,
-    site_admin: bool,
-    name: String,
-    company: Option<String>,
-    blog: String,
-    location: String,
-    email: Option<String>,
-    hireable: Option<bool>,
-    bio: String,
-    twitter_username: Option<String>,
-    public_repos: u64,
-    public_gists: u64,
-    followers: u64,
-    following: u64,
-    created_at: String,
-    updated_at: String,
+    pub type_: String,
+    pub site_admin: bool,
+    pub name: String,
+    pub company: Option<String>,
+    pub blog: String,
+    pub location: String,
+    pub email: Option<String>,
+    pub hireable: Option<bool>,
+    pub bio: String,
+    pub twitter_username: Option<String>,
+    pub public_repos: u64,
+    pub public_gists: u64,
+    pub followers: u64,
+    pub following: u64,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GithubCopilotAuth {
-    annotations_enabled: bool,
-    chat_enabled: bool,
-    chat_jetbrains_enabled: bool,
-    code_quote_enabled: bool,
-    copilot_ide_agent_chat_gpt4_small_prompt: bool,
-    copilotignore_enabled: bool,
-    expires_at: u64,
-    intellij_editor_fetcher: bool,
-    prompt_8k: bool,
-    public_suggestions: String,
-    refresh_in: u64,
-    sku: String,
-    snippy_load_test_enabled: bool,
-    telemetry: String,
+    pub annotations_enabled: bool,
+    pub chat_enabled: bool,
+    pub chat_jetbrains_enabled: bool,
+    pub code_quote_enabled: bool,
+    pub copilot_ide_agent_chat_gpt4_small_prompt: bool,
+    pub copilotignore_enabled: bool,
+    pub expires_at: u64,
+    pub intellij_editor_fetcher: bool,
+    pub prompt_8k: bool,
+    pub public_suggestions: String,
+    pub refresh_in: u64,
+    pub sku: String,
+    pub snippy_load_test_enabled: bool,
+    pub telemetry: String,
     pub token: String,
-    tracking_id: String,
-    vsc_electron_fetcher: bool,
-    vsc_panel_v2: bool,
+    pub tracking_id: String,
+    pub vsc_electron_fetcher: bool,
+    pub vsc_panel_v2: bool,
 }
 
 #[derive(Debug)]
@@ -244,10 +121,10 @@ impl AuthenticationManager {
     ///
     /// This function will return an error if the authentication request fails.
     pub async fn request_github_auth(&self) -> Result<GitHubDeviceLoginResponse, String> {
-        let headers = DEFAULT_LOGIN_HEADERS.to_headers();
+        let headers = headers::DefaultLoginHeaders().to_headers();
 
         let req = reqwest::Client::new()
-            .post(*DEVICE_CODE_LOGIN_URL)
+            .post(urls::DEVICE_CODE_LOGIN_URL)
             .json(&serde_json::json!({
                 "client_id": "Iv1.b507a08c87ecfe98",
                 "scope": "read:user"
@@ -290,10 +167,11 @@ impl AuthenticationManager {
         &self,
         device_code: &String,
     ) -> Result<GitHubDeviceTokenResponse, ()> {
-        let headers = DEFAULT_LOGIN_HEADERS.to_headers();
+        // let headers = DEFAULT_LOGIN_HEADERS.to_headers();
+        let headers = headers::DefaultLoginHeaders().to_headers();
 
         let req = reqwest::Client::new()
-            .post(*DEVICE_CODE_TOKEN_CHECK_URL)
+            .post(urls::DEVICE_CODE_TOKEN_CHECK_URL)
             .json(&serde_json::json!({
                 "client_id": "Iv1.b507a08c87ecfe98",
                 "device_code": device_code,
@@ -347,11 +225,13 @@ impl AuthenticationManager {
         &self,
         auth: &GitHubDeviceTokenResponse,
     ) -> Result<GithubUserData, String> {
-        let headers = get_default_user_headers(&auth.token_type, &auth.access_token);
-        let headers = headers.to_headers();
+        let headers = headers::DefaultGithubUserHeaders {
+            token: &auth.access_token,
+            token_type: &auth.token_type,
+        }.to_headers();
 
         let req = reqwest::Client::new()
-            .get(*GH_AUTH_TOKEN_URL)
+            .get(urls::GH_AUTH_TOKEN_URL)
             .headers(headers)
             .send()
             .await
@@ -369,11 +249,12 @@ impl AuthenticationManager {
         &self,
         auth: &GitHubDeviceTokenResponse,
     ) -> Result<GithubCopilotAuth, String> {
-        let headers = get_default_internal_headers(&auth.token_type, &auth.access_token);
-        let headers = headers.to_headers();
+        let headers = headers::DefaultGithubInternalHeaders {
+            token: &auth.access_token,
+        }.to_headers();
 
         let req = reqwest::Client::new()
-            .get(*GH_COPILOT_INTERNAL_AUTH_URL)
+            .get(urls::GH_COPILOT_INTERNAL_AUTH_URL)
             .headers(headers)
             .send()
             .await

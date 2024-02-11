@@ -1,9 +1,8 @@
 use std::io::Write;
 
-use crate::prompts;
-use crate::gh;
+use crate::{gh, headers::{CopilotCompletionHeaders, Headers}, prompts};
 use futures::StreamExt;
-use reqwest::{header::HeaderMap, header::HeaderValue, Client};
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -67,9 +66,12 @@ pub struct CopilotManager<'a> {
 
 impl<'a> CopilotManager<'a> {
     pub fn new(auth: &'a gh::GithubAuth, client: &'a Client) -> CopilotManager<'a> {
+        let vscode_sid = crate::utils::generate_vscode_session_id();
+        let device_id = crate::utils::random_hex_string(6);
+
         CopilotManager {
-            vscode_sid: crate::utils::generate_vscode_session_id(),
-            device_id: crate::utils::random_hex_string(6),
+            vscode_sid,
+            device_id,
             auth,
             client,
             history: Vec::new(),
@@ -93,9 +95,13 @@ impl<'a> CopilotManager<'a> {
             .collect()
     }
 
-    pub async fn ask(&mut self, prompt: &String) -> String {
+    pub async fn ask(&mut self, prompt: &String, log: bool) -> String {
         let url = "https://api.githubcopilot.com/chat/completions";
-        let headers = self.get_headers();
+        let headers = CopilotCompletionHeaders {
+            token: &self.auth.copilot_auth.token,
+            vscode_sid: &self.vscode_sid,
+            device_id: &self.device_id,
+        }.to_headers();
 
         let mut history =
             self.construct_message_history(prompts::COPILOT_INSTRUCTIONS, &self.history);
@@ -156,11 +162,13 @@ impl<'a> CopilotManager<'a> {
                     Ok(json) => {
                         if json.choices.len() > 0 {
                             if let Some(content) = &json.choices[0].delta.content {
-                                print!("{}", content);
-                                std::io::stdout().flush().unwrap();
+                                if log {
+                                    print!("{}", content);
+                                    std::io::stdout().flush().unwrap();
+                                }
                                 message.push_str(content);
-                            } else if let Some(finish) = &json.choices[0].finish_reason {
-                                println!("Finish reason: {}", finish);
+                            } else if let Some(_finish) = &json.choices[0].finish_reason {
+                                // println!("Finish reason: {}", finish);
                             } else {
                                 // utils::append_to_file("debugr.txt", &format!("{:#?}\n", json));
                             }
@@ -179,8 +187,10 @@ impl<'a> CopilotManager<'a> {
             }
         }
 
-        print!("\n");
-        std::io::stdout().flush().unwrap();
+        if log {
+            print!("\n");
+            std::io::stdout().flush().unwrap();
+        }
 
         // add the response to the history
         history.push(Message {
@@ -191,51 +201,5 @@ impl<'a> CopilotManager<'a> {
         self.history = history;
 
         message
-    }
-
-    fn get_headers(&self) -> HeaderMap {
-        let auth = format!("Bearer {}", self.auth.copilot_auth.token);
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            "authorization",
-            HeaderValue::from_str(auth.as_str()).unwrap(),
-        );
-        headers.insert(
-            "x-request-id",
-            HeaderValue::from_str(self.auth.copilot_auth.token.as_str()).unwrap(),
-        );
-        headers.insert(
-            "vscode-sessionid",
-            HeaderValue::from_str(self.vscode_sid.as_str()).unwrap(),
-        );
-        headers.insert(
-            "machineid",
-            HeaderValue::from_str(self.device_id.as_str()).unwrap(),
-        );
-        headers.insert(
-            "editor-version",
-            HeaderValue::from_str("vscode/1.85.1").unwrap(),
-        );
-        headers.insert(
-            "editor-plugin-version",
-            HeaderValue::from_str("copilot-chat/0.12.2023120701").unwrap(),
-        );
-        headers.insert(
-            "openai-organization",
-            HeaderValue::from_str("github-copilot").unwrap(),
-        );
-        headers.insert(
-            "openai-intent",
-            HeaderValue::from_str("conversation-panel").unwrap(),
-        );
-        headers.insert(
-            "content-type",
-            HeaderValue::from_str("application/json").unwrap(),
-        );
-        headers.insert(
-            "user-agent",
-            HeaderValue::from_str("GitHubCopilotChat/0.12.2023120701").unwrap(),
-        );
-        headers
     }
 }
