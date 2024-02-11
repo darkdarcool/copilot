@@ -121,7 +121,7 @@ impl AuthenticationManager {
     ///
     /// This function will return an error if the authentication request fails.
     pub async fn request_github_auth(&self) -> Result<GitHubDeviceLoginResponse, String> {
-        let headers = headers::DefaultLoginHeaders().to_headers();
+        let headers = headers::LoginHeaders().to_headers();
 
         let req = reqwest::Client::new()
             .post(urls::DEVICE_CODE_LOGIN_URL)
@@ -168,7 +168,7 @@ impl AuthenticationManager {
         device_code: &String,
     ) -> Result<GitHubDeviceTokenResponse, ()> {
         // let headers = DEFAULT_LOGIN_HEADERS.to_headers();
-        let headers = headers::DefaultLoginHeaders().to_headers();
+        let headers = headers::LoginHeaders().to_headers();
 
         let req = reqwest::Client::new()
             .post(urls::DEVICE_CODE_TOKEN_CHECK_URL)
@@ -225,7 +225,7 @@ impl AuthenticationManager {
         &self,
         auth: &GitHubDeviceTokenResponse,
     ) -> Result<GithubUserData, String> {
-        let headers = headers::DefaultGithubUserHeaders {
+        let headers = headers::GithubUserHeaders {
             token: &auth.access_token,
             token_type: &auth.token_type,
         }.to_headers();
@@ -249,7 +249,7 @@ impl AuthenticationManager {
         &self,
         auth: &GitHubDeviceTokenResponse,
     ) -> Result<GithubCopilotAuth, String> {
-        let headers = headers::DefaultGithubInternalHeaders {
+        let headers = headers::GithubInternalHeaders {
             token: &auth.access_token,
         }.to_headers();
 

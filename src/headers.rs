@@ -36,9 +36,9 @@ pub(crate) trait Headers {
     fn to_headers(&self) -> HeaderMap;
 }
 
-pub(crate) struct DefaultLoginHeaders();
+pub(crate) struct LoginHeaders();
 
-impl Headers for DefaultLoginHeaders {
+impl Headers for LoginHeaders {
     fn to_headers(&self) -> HeaderMap {
         headers! {
             "Accept" => "application/json",
@@ -50,12 +50,12 @@ impl Headers for DefaultLoginHeaders {
     }
 }
 
-pub(crate) struct DefaultGithubUserHeaders<'a> {
+pub(crate) struct GithubUserHeaders<'a> {
     pub token: &'a String,
     pub token_type: &'a String,
 }
 
-impl<'a> Headers for DefaultGithubUserHeaders<'a> {
+impl<'a> Headers for GithubUserHeaders<'a> {
     fn to_headers(&self) -> HeaderMap {
         headers! {
             "Authorization" => format!("{} {}", self.token_type, self.token),
@@ -65,11 +65,11 @@ impl<'a> Headers for DefaultGithubUserHeaders<'a> {
     }
 }
 
-pub(crate) struct DefaultGithubInternalHeaders<'a> {
+pub(crate) struct GithubInternalHeaders<'a> {
     pub token: &'a String,
 }
 
-impl<'a> Headers for DefaultGithubInternalHeaders<'a> {
+impl<'a> Headers for GithubInternalHeaders<'a> {
     fn to_headers(&self) -> HeaderMap {
         headers! {
             "Authorization" => format!("token {}", self.token),
