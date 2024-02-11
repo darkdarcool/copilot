@@ -3,4 +3,4 @@ TODO:
     * Include code information in the prompt
     * Add syntax highlighting
     * Make it nice to use lol
-    * Make an actual README 
+    * Make an actual README
