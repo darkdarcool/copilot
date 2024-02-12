@@ -1,30 +1,22 @@
 use std::io::Write;
 
-use crate::{gh, headers::{CopilotCompletionHeaders, Headers}, prompts};
+use crate::{gh, headers::{CopilotCompletionHeaders, Headers}, prompts, utils};
 use futures::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 #[derive(Serialize, Deserialize, Debug)]
-struct ContentFilterOffsets {
-    check_offset: u64,
-    start_offset: u64,
-    end_offset: u64,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct ContentFilterResults {
-    hate: FilterResult,
-    self_harm: FilterResult,
-    sexual: FilterResult,
-    violence: FilterResult,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct FilterResult {
+struct ContentFilterResult {
     filtered: bool,
     severity: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct ContentFilterOffsets {
+    check_offset: i32,
+    start_offset: i32,
+    end_offset: i32,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -35,18 +27,25 @@ struct Delta {
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Choice {
-    index: u64,
+    index: i32,
     content_filter_offsets: ContentFilterOffsets,
-    content_filter_results: ContentFilterResults,
+    content_filter_results: Option<ContentFilterResults>,
     delta: Delta,
-    #[serde(rename = "finish_reason")]
     finish_reason: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct ContentFilterResults {
+    hate: ContentFilterResult,
+    self_harm: ContentFilterResult,
+    sexual: ContentFilterResult,
+    violence: ContentFilterResult,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 struct GhCopilotResponse {
     choices: Vec<Choice>,
-    created: u64,
+    created: i64,
     id: String,
 }
 
@@ -54,6 +53,12 @@ struct GhCopilotResponse {
 struct Message {
     content: String,
     role: String,
+}
+
+#[derive(Debug)]
+pub struct Completion {
+    pub content: String,
+    pub finish_reason: String
 }
 
 pub struct CopilotManager<'a> {
@@ -95,7 +100,7 @@ impl<'a> CopilotManager<'a> {
             .collect()
     }
 
-    pub async fn ask(&mut self, prompt: &String, log: bool) -> String {
+    pub async fn ask(&mut self, prompt: &String, log: bool) -> Completion {
         let url = "https://api.githubcopilot.com/chat/completions";
         let headers = CopilotCompletionHeaders {
             token: &self.auth.copilot_auth.token,
@@ -136,55 +141,53 @@ impl<'a> CopilotManager<'a> {
 
         let mut message = String::new();
         let mut buffer = String::new();
+        let mut finish_reason = String::new();
 
         'outerloop: while let Some(chunk) = response.next().await {
             let body = chunk.unwrap();
-            let body_str = String::from_utf8_lossy(&body)
-                .into_owned()
-                .replace("\n", "");
+            let body_str = String::from_utf8_lossy(&body);
 
-            let lines: Vec<String> = body_str
-                .split("data:")
-                .map(|s| s.trim())
-                .map(|s| s.to_string())
-                .collect();
+            buffer.push_str(&body_str);
+            // the data may be split into multiple chunks, BUT it's always dilimited by \n\ndata:
 
+            let lines = buffer.split("\n\ndata: ").map(|s| s.to_string()).map(|s| s.replacen("data:", "", 1)).collect::<Vec<String>>();
+
+
+            let mut processed_buffer = String::new();
             for line in lines {
-                if line == "" {
+                utils::append_to_file("resp.txt", &format!("{}\n", line));
+                if line.is_empty() {
                     continue;
                 }
 
-                buffer.push_str(&line.trim());
+                let parsed = serde_json::from_str::<GhCopilotResponse>(&line);
 
-                let json = serde_json::from_str::<GhCopilotResponse>(&buffer);
 
-                match json {
-                    Ok(json) => {
-                        if json.choices.len() > 0 {
-                            if let Some(content) = &json.choices[0].delta.content {
-                                if log {
-                                    print!("{}", content);
-                                    std::io::stdout().flush().unwrap();
-                                }
+                match parsed {
+                    Ok(parsed) => {
+                        if parsed.choices.len() > 0 {
+                            let choice = &parsed.choices[0];
+                            if let Some(freason) = &choice.finish_reason {
+                                finish_reason = freason.clone().to_string();
+                                break 'outerloop;
+                            }
+                            let delta = &choice.delta;
+                            if let Some(content) = &delta.content {
+                                print!("{}", content);
+                                std::io::stdout().flush().unwrap();
                                 message.push_str(content);
-                            } else if let Some(_finish) = &json.choices[0].finish_reason {
-                                // println!("Finish reason: {}", finish);
-                            } else {
-                                // utils::append_to_file("debugr.txt", &format!("{:#?}\n", json));
                             }
                         }
-
-                        buffer.clear();
                     }
-                    Err(_e) => {
-                        if line == "[DONE]" {
-                            break 'outerloop;
-                        }
-                        // utils::append_to_file("debug.txt", &format!("{}\n", e));
-                        continue;
+                    Err(_) => {
+                        utils::append_to_file("debug.txt", &format!("{}\n", line));
+                        processed_buffer.push_str(&line);
                     }
                 }
+
+                buffer = processed_buffer.clone();
             }
+
         }
 
         if log {
@@ -200,6 +203,9 @@ impl<'a> CopilotManager<'a> {
 
         self.history = history;
 
-        message
+        Completion {
+            content: message.clone(),
+            finish_reason
+        }
     }
 }

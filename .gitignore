@@ -1,1 +1,5 @@
 /target
+debug.txt
+resp.txt
+.vscode/
+.DS_Store

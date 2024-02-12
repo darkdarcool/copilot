@@ -25,6 +25,10 @@ async fn main() {
             break;
         }
 
-        copilot_m.ask(&input, true).await;
+        let msg = copilot_m.ask(&input, true).await;
+
+        println!("===COPILOT===");
+        println!("{:#?}", msg);
+
     }
 }
