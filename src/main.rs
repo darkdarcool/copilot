@@ -2,9 +2,10 @@ mod copilot;
 mod gh;
 mod headers;
 mod prompts;
-mod utils;
 mod urls;
+mod utils;
 
+use oxc_allocator;
 use rustyline::DefaultEditor;
 
 #[tokio::main]
@@ -14,7 +15,9 @@ async fn main() {
 
     let client = reqwest::Client::new();
 
-    let mut copilot_m = copilot::CopilotManager::new(&auth, &client);
+    let allocator = oxc_allocator::Allocator::default();
+
+    let mut copilot_m = copilot::CopilotManager::new(&auth, &client, &allocator, prompts::COPILOT_INSTRUCTIONS);
 
     let mut rl = DefaultEditor::new().unwrap();
 
@@ -29,6 +32,5 @@ async fn main() {
 
         println!("===COPILOT===");
         println!("{:#?}", msg);
-
     }
 }

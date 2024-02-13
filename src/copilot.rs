@@ -1,6 +1,10 @@
 use std::io::Write;
 
-use crate::{gh, headers::{CopilotCompletionHeaders, Headers}, prompts, utils};
+use crate::{
+    gh,
+    headers::{CopilotCompletionHeaders, Headers},
+    utils,
+};
 use futures::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -50,54 +54,54 @@ struct GhCopilotResponse {
 }
 
 #[derive(Deserialize, Serialize, Clone)]
-struct Message {
-    content: String,
-    role: String,
+pub struct Message<'alloc> {
+    content: &'alloc str,
+    role: &'alloc str,
 }
 
 #[derive(Debug)]
 pub struct Completion {
     pub content: String,
-    pub finish_reason: String
+    pub finish_reason: String,
 }
 
-pub struct CopilotManager<'a> {
+pub struct CopilotManager<'a, 'alloc> {
     vscode_sid: String,
     device_id: String,
     auth: &'a gh::GithubAuth,
     client: &'a Client,
-    history: Vec<Message>,
+    allocator: &'alloc oxc_allocator::Allocator,
+    history: Vec<Message<'alloc>>,
 }
 
-impl<'a> CopilotManager<'a> {
-    pub fn new(auth: &'a gh::GithubAuth, client: &'a Client) -> CopilotManager<'a> {
+impl<'a, 'alloc> CopilotManager<'a, 'alloc> {
+    pub fn new(
+        auth: &'a gh::GithubAuth,
+        client: &'a Client,
+        allocator: &'a oxc_allocator::Allocator,
+        prompt: &'static str
+    ) -> CopilotManager<'a, 'alloc>
+    where
+        'a: 'alloc,
+    {
         let vscode_sid = crate::utils::generate_vscode_session_id();
         let device_id = crate::utils::random_hex_string(6);
+
+        let mut history = Vec::new();
+
+        history.push(Message {
+            content: allocator.alloc_str(prompt),
+            role: allocator.alloc_str("system"),
+        });
 
         CopilotManager {
             vscode_sid,
             device_id,
             auth,
             client,
-            history: Vec::new(),
+            allocator,
+            history,
         }
-    }
-
-    fn construct_message_history(
-        &self,
-        system_prompt: &str,
-        current_history: &Vec<Message>,
-    ) -> Vec<Message> {
-        let system_message = Message {
-            content: system_prompt.to_string(),
-            role: "system".to_string(),
-        };
-
-        // return system message and the current history
-        vec![system_message]
-            .into_iter()
-            .chain(current_history.iter().cloned())
-            .collect()
     }
 
     pub async fn ask(&mut self, prompt: &String, log: bool) -> Completion {
@@ -106,15 +110,14 @@ impl<'a> CopilotManager<'a> {
             token: &self.auth.copilot_auth.token,
             vscode_sid: &self.vscode_sid,
             device_id: &self.device_id,
-        }.to_headers();
+        }
+        .to_headers();
 
-        let mut history =
-            self.construct_message_history(prompts::COPILOT_INSTRUCTIONS, &self.history);
+        let history = &mut self.history;
 
-        // add current user prompt to history
         history.push(Message {
-            content: prompt.to_string(),
-            role: "user".to_string(),
+            content: self.allocator.alloc_str(prompt),
+            role: self.allocator.alloc_str("user"),
         });
 
         // no chat history for this
@@ -148,10 +151,13 @@ impl<'a> CopilotManager<'a> {
             let body_str = String::from_utf8_lossy(&body);
 
             buffer.push_str(&body_str);
+
             // the data may be split into multiple chunks, BUT it's always dilimited by \n\ndata:
-
-            let lines = buffer.split("\n\ndata: ").map(|s| s.to_string()).map(|s| s.replacen("data:", "", 1)).collect::<Vec<String>>();
-
+            let lines = buffer
+                .split("\n\ndata: ")
+                .map(|s| s.to_string())
+                .map(|s| s.replacen("data:", "", 1))
+                .collect::<Vec<String>>();
 
             let mut processed_buffer = String::new();
             for line in lines {
@@ -162,15 +168,17 @@ impl<'a> CopilotManager<'a> {
 
                 let parsed = serde_json::from_str::<GhCopilotResponse>(&line);
 
-
                 match parsed {
                     Ok(parsed) => {
+                        // If the choice actually exists
                         if parsed.choices.len() > 0 {
                             let choice = &parsed.choices[0];
+                            // If there is a finish reason in the choice, we break the loop
                             if let Some(freason) = &choice.finish_reason {
                                 finish_reason = freason.clone().to_string();
                                 break 'outerloop;
                             }
+                            // There might be content in the delta, let's handle it
                             let delta = &choice.delta;
                             if let Some(content) = &delta.content {
                                 print!("{}", content);
@@ -184,10 +192,9 @@ impl<'a> CopilotManager<'a> {
                         processed_buffer.push_str(&line);
                     }
                 }
-
+                // Add the incomplete line to the buffer to be processed in the next iteration
                 buffer = processed_buffer.clone();
             }
-
         }
 
         if log {
@@ -197,15 +204,13 @@ impl<'a> CopilotManager<'a> {
 
         // add the response to the history
         history.push(Message {
-            content: message.clone(),
-            role: "system".to_string(),
+            content: self.allocator.alloc_str(&message),
+            role: self.allocator.alloc_str("system"),
         });
 
-        self.history = history;
-
         Completion {
-            content: message.clone(),
-            finish_reason
+            content: message,
+            finish_reason,
         }
     }
 }

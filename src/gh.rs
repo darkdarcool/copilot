@@ -6,8 +6,7 @@ use serde_json;
 
 use crate::{
     headers::{self, Headers},
-    utils,
-    urls
+    urls, utils,
 };
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -228,7 +227,8 @@ impl AuthenticationManager {
         let headers = headers::GithubUserHeaders {
             token: &auth.access_token,
             token_type: &auth.token_type,
-        }.to_headers();
+        }
+        .to_headers();
 
         let req = reqwest::Client::new()
             .get(urls::GH_AUTH_TOKEN_URL)
@@ -251,7 +251,8 @@ impl AuthenticationManager {
     ) -> Result<GithubCopilotAuth, String> {
         let headers = headers::GithubInternalHeaders {
             token: &auth.access_token,
-        }.to_headers();
+        }
+        .to_headers();
 
         let req = reqwest::Client::new()
             .get(urls::GH_COPILOT_INTERNAL_AUTH_URL)

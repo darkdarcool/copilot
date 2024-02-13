@@ -80,7 +80,7 @@ impl<'a> Headers for GithubInternalHeaders<'a> {
     }
 }
 
-pub (crate) struct CopilotCompletionHeaders<'a> {
+pub(crate) struct CopilotCompletionHeaders<'a> {
     pub token: &'a String,
     pub vscode_sid: &'a String,
     pub device_id: &'a String,
