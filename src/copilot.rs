@@ -4,11 +4,16 @@ use crate::{
     gh,
     headers::{CopilotCompletionHeaders, Headers},
     utils,
+    term
 };
+
 use futures::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+
+// crossterm for writing
+
 
 #[derive(Serialize, Deserialize, Debug)]
 struct ContentFilterResult {
@@ -72,6 +77,7 @@ pub struct CopilotManager<'a, 'alloc> {
     client: &'a Client,
     allocator: &'alloc oxc_allocator::Allocator,
     history: Vec<Message<'alloc>>,
+    full_message: String,
 }
 
 impl<'a, 'alloc> CopilotManager<'a, 'alloc> {
@@ -101,9 +107,11 @@ impl<'a, 'alloc> CopilotManager<'a, 'alloc> {
             client,
             allocator,
             history,
+            full_message: String::new(),
         }
     }
 
+    #[allow(unused_assignments)]
     pub async fn ask(&mut self, prompt: &String, log: bool) -> Completion {
         let url = "https://api.githubcopilot.com/chat/completions";
         let headers = CopilotCompletionHeaders {
@@ -113,12 +121,18 @@ impl<'a, 'alloc> CopilotManager<'a, 'alloc> {
         }
         .to_headers();
 
-        let history = &mut self.history;
+        let mut transport_history = Vec::new();
 
-        history.push(Message {
-            content: self.allocator.alloc_str(prompt),
-            role: self.allocator.alloc_str("user"),
-        });
+        {
+            let history = &mut self.history;
+
+            history.push(Message {
+                content: self.allocator.alloc_str(prompt),
+                role: self.allocator.alloc_str("user"),
+            });
+
+            transport_history = history.clone();
+        }
 
         // no chat history for this
         let data = json!({
@@ -128,7 +142,7 @@ impl<'a, 'alloc> CopilotManager<'a, 'alloc> {
             "stream": true,
             "temperature": 0.1,
             "top_p": 1,
-            "messages": history
+            "messages": transport_history
         });
 
         // we need to stream the response
@@ -181,8 +195,9 @@ impl<'a, 'alloc> CopilotManager<'a, 'alloc> {
                             // There might be content in the delta, let's handle it
                             let delta = &choice.delta;
                             if let Some(content) = &delta.content {
-                                print!("{}", content);
-                                std::io::stdout().flush().unwrap();
+                                if log {
+                                    self.handle_content(content).await;
+                                }//std::io::stdout().flush().unwrap();
                                 message.push_str(content);
                             }
                         }
@@ -203,14 +218,47 @@ impl<'a, 'alloc> CopilotManager<'a, 'alloc> {
         }
 
         // add the response to the history
-        history.push(Message {
-            content: self.allocator.alloc_str(&message),
-            role: self.allocator.alloc_str("system"),
-        });
+        {
+            let history = &mut self.history;
+
+            history.push(Message {
+                content: self.allocator.alloc_str(&message),
+                role: self.allocator.alloc_str("system"),
+            });
+        }
+
+        self.full_message = String::new();
 
         Completion {
             content: message,
             finish_reason,
+        }
+    }
+
+    async fn handle_content(&mut self, content: &String) {
+        // tokio sleep for 10 ms
+        // tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        self.full_message.push_str(content);
+        let line_count = self.full_message.split("\n").count();
+
+        if self.full_message.ends_with("\n") {
+            let highlighted = term::highlight_line(&self.full_message);
+            let escaped: Vec<String> = term::to_terminal_escaped(&highlighted)
+                .split("\n")
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+                .collect();
+
+            let mut escaped_len = escaped.len();
+            while line_count > escaped_len {
+                print!("\n");
+                escaped_len += 1;
+            }
+
+            print!("{}", escaped.last().unwrap());
+            std::io::stdout().flush().unwrap();
+            // self.full_message = String::new();
         }
     }
 }
